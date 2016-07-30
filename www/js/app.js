@@ -16,44 +16,98 @@ angular.module('starter', ['ionic', 'ngCordova'])
 })
 
 .controller('MapCtrl', function($scope, $state, $cordovaGeolocation) {
-  var options = {timeout: 10000, enableHighAccuracy: true};
-
-  $cordovaGeolocation.getCurrentPosition(options).then(function(position) {
-    var latLng = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
-
-    var mapOptions = {
-      center: latLng,
-      zoom: 15,
-      mapTypeId: google.maps.MapTypeId.ROADMAP
-    };
-
-    $scope.map = new google.maps.Map(document.getElementById("map"), mapOptions);
-
-    // Wait until the map is loaded
-    google.maps.event.addListenerOnce($scope.map, 'idle', function() {
-      // Set marker on location
-      var marker = new google.maps.Marker({
-        map: $scope.map,
-        animation: google.maps.Animation.DROP,
-        position: latLng
-      });
-      // Set the dialog in the info window
-      var infoWindow = new google.maps.InfoWindow({
-        content: "Current Location"
-      });
-      // Open the info window upon clicking the marker
-      google.maps.event.addListener(marker, 'click', function() {
-        infoWindow.open($scope.map, marker);
-      });
-    });
-
-  }, function(error) {
-    console.log("Could not get location");
-  });
 
 })
 
-.run(function($ionicPlatform) {
+.factory('GoogleMaps', function($cordovaGeolocation, Markers) {
+  var apiKey = false;
+  var map = null;
+
+  function initMap() {
+    var options = {timeout: 10000, enableHighAccuracy: true};
+
+    $cordovaGeolocation.getCurrentPosition(options).then(function(position) {
+      var latLng = new google.maps.LatLng(position.coords.latitude, position.coords.longitude);
+
+      var mapOptions = {
+        center: latLng,
+        zoom: 15,
+        mapTypeId: google.maps.MapTypeId.ROADMAP
+      };
+
+      map = new google.maps.Map(document.getElementById("map"), mapOptions);
+
+      // Wait until the map is loaded
+      google.maps.event.addListenerOnce(map, 'idle', function() {
+        // Load markers
+        loadMarkers();
+      });
+    }, function(error) {
+      console.log("Could not get location");
+
+      // Load markers
+      loadMarkers();
+    });
+  }
+
+  function loadMarkers() {
+    // Get all of the markers form the Markers factory
+    Markers.getMarkers().then(function(markers) {
+      console.log("Markers: ", markers);
+
+      var records = markers.data.result;
+
+      for (var i = 0; i < records.length; i++) {
+        var record = records[i];
+        var markerPosition = new google.maps.LatLng(record.lat, record.lng);
+
+        // Add the marker to the map
+        var marker = new google.maps.Marker({
+          map: map,
+          animation: google.maps.Animation.DROP,
+          position: markerPosition
+        });
+
+        var infoWindowContent = "<h4>" + record.name + "</h4>";
+        addInfoWindow(marker, infoWindowContent, record);
+      }
+    });
+  }
+
+  function addInfoWindow(marker, message, record) {
+    var infoWindow = new google.maps.InfoWindow({
+      content: message
+    });
+  }
+
+  return {
+    init: function() {
+      initMap();
+    }
+  }
+
+})
+
+.factory('Markers', function($http) {
+  var markers = [];
+
+  return {
+    // Return all available markers
+    getMarkers: function() {
+      return $http.get("http://aubryandjoe.com/memory-map/markers.php").then(function(response) {
+        markers = response;
+        return markers;
+      });
+
+    },
+    // Return single marker with id
+    getMarker: function(id) {
+
+    }
+  }
+})
+
+.run(function($ionicPlatform, GoogleMaps) {
   $ionicPlatform.ready(function() {
     if(window.cordova && window.cordova.plugins.Keyboard) {
       // Hide the accessory bar by default (remove this to show the accessory bar above the keyboard
@@ -68,5 +122,7 @@ angular.module('starter', ['ionic', 'ngCordova'])
     if(window.StatusBar) {
       StatusBar.styleDefault();
     }
+
+    GoogleMaps.init();
   });
 })

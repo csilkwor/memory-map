@@ -20,8 +20,29 @@ angular.module('starter', ['ionic', 'ngCordova'])
 
 }) // End Map Controller
 
+// Connectivity Monitor Factory
+.factory('ConnectivityMonitor', function($rootScope, $cordovaNetwork) {
+  return {
+    isOnline: function() {
+      if(ionic.Platform.isWebView()) {
+        return $cordovaNetwork.isOnline();
+      } else {
+        return navigator.onLine;
+      }
+    },
+
+    isOffline: function() {
+      if(ionic.Platform.isWebView()) {
+        return !$cordovaNetwork.isOnline();
+      } else {
+        return !navigator.onLine;
+      }
+    } 
+  }
+})
+
 // Google Maps Factory
-.factory('GoogleMaps', function($cordovaGeolocation, Markers) {
+.factory('GoogleMaps', function($cordovaGeolocation, $ionicLoading, $rootScope, $cordovaNetwork, Markers, ConnectivityMonitor) {
   var apiKey = false;
   var map = null;
 
@@ -43,6 +64,7 @@ angular.module('starter', ['ionic', 'ngCordova'])
       google.maps.event.addListenerOnce(map, 'idle', function() {
         // Load markers
         loadMarkers();
+        enableMap();
       });
     }, function(error) {
       console.log("Could not get location");
@@ -50,6 +72,50 @@ angular.module('starter', ['ionic', 'ngCordova'])
       // Load markers
       loadMarkers();
     });
+  }
+
+  function enableMap() {
+    $ionicLoading.hide();
+  }
+
+  function disableMap() {
+    $ionicLoading.show({
+      template: 'You are not connected to the internet.'
+    });
+  }
+
+  function loadGoogleMaps() {
+    $ionicLoading.show({
+      template: 'Loading Google Maps'
+    });
+
+    // This function will be loaded after the SDK has been loaded
+    window.mapInit = function() {
+      initMap();
+    };
+
+    // Script element to insert in the page
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.id = "googleMaps";
+
+    if(apiKey) {
+      script.src = 'http://maps.google.com/maps/api/js?key=' + apiKey 
++ '&sensor=true&callback=mapInit';
+    } else {
+      script.src = 'http://maps.google.com/maps/api/js?sensor=true&callback=mapInit';
+    }
+
+    document.body.appendChild(script);
+
+  }
+
+  function checkLoaded() {
+    if (typeof google == "undefined" || typeof google.maps == "undefined") {
+      loadGoogleMaps();
+    } else {
+      enableMap();
+    }
   }
 
   function loadMarkers() {
@@ -81,14 +147,57 @@ angular.module('starter', ['ionic', 'ngCordova'])
     var infoWindow = new google.maps.InfoWindow({
       content: message
     });
+
+    google.maps.event.addListener(marker, 'click', function() {
+      infoWindow.open(map, marker);
+    });
   }
 
-  return {
-    init: function() {
-      initMap();
+  function addConnectivityListeners() {
+
+    if (ionic.Platform.isWebView()) {
+      // Check if the map is loaded when the user comes online
+      $rootScope.$on('$cordovaNetwork:online', function(event, networkState) {
+        checkLoaded();
+      });
+      // Disable the map when user goes offline
+      $rootScope.$on('$cordovaNetwork:offline', function(event, networkState) {
+        disableMap();
+      });
+    } else {
+      window.addEventListener("online", function(e) {
+        checkLoaded();
+      }, false);
+      window.addEventListener("offline", function(e) {
+        disableMap();
+      }, false);
     }
   }
 
+  return {
+    init: function(key) {
+      if (typeof key != "undefined") {
+        apiKey = key;
+      }
+
+      if (typeof google == "undefined" || typeof google.maps == "undefined") {
+        console.warn("Google Maps SDK needs to be loaded");
+
+        disableMap();
+        if (ConnectivityMonitor.isOnline()) {
+          loadGoogleMaps();
+        }
+      } else {
+        if (ConnectivityMonitor.isOnline()) {
+          initMap();
+          enableMap();
+        } else {
+          disableMap();
+        }
+      }
+      addConnectivityListeners();
+    }
+  }
 }) // End Google Maps factory
 
 // Markers Factory
@@ -127,6 +236,6 @@ angular.module('starter', ['ionic', 'ngCordova'])
       StatusBar.styleDefault();
     }
 
-    GoogleMaps.init();
+    GoogleMaps.init("AIzaSyAqkWnEM3FASXWUmTrkN-ATaJxVcqSWmfg");
   });
 })

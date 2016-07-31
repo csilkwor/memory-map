@@ -1,4 +1,4 @@
-// Ionic Starter App
+// Memory Map
 
 // angular.module is a global place for creating, registering and retrieving Angular modules
 // 'starter' is the name of this angular module example (also set in a <body> attribute in index.html)
@@ -15,10 +15,12 @@ angular.module('starter', ['ionic', 'ngCordova'])
   $urlRouterProvider.otherwise("/");
 })
 
+// Map Controller
 .controller('MapCtrl', function($scope, $state, $cordovaGeolocation) {
 
-})
+}) // End Map Controller
 
+// Google Maps Factory
 .factory('GoogleMaps', function($cordovaGeolocation, Markers) {
   var apiKey = false;
   var map = null;
@@ -55,7 +57,8 @@ angular.module('starter', ['ionic', 'ngCordova'])
     Markers.getMarkers().then(function(markers) {
       console.log("Markers: ", markers);
 
-      var records = markers.data.result;
+      var records = markers.data.markers;
+      console.log("Num records: ", records.length);
 
       for (var i = 0; i < records.length; i++) {
         var record = records[i];
@@ -86,8 +89,9 @@ angular.module('starter', ['ionic', 'ngCordova'])
     }
   }
 
-})
+}) // End Google Maps factory
 
+// Markers Factory
 .factory('Markers', function($http) {
   var markers = [];
 
@@ -105,7 +109,7 @@ angular.module('starter', ['ionic', 'ngCordova'])
 
     }
   }
-})
+}) // End Markers Factory
 
 .run(function($ionicPlatform, GoogleMaps) {
   $ionicPlatform.ready(function() {

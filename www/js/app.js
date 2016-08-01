@@ -43,6 +43,7 @@ angular.module('starter', ['ionic', 'ngCordova'])
 
 // Google Maps Factory
 .factory('GoogleMaps', function($cordovaGeolocation, $ionicLoading, $rootScope, $cordovaNetwork, Markers, ConnectivityMonitor) {
+  var markerCache = []
   var apiKey = false;
   var map = null;
 
@@ -64,6 +65,18 @@ angular.module('starter', ['ionic', 'ngCordova'])
       google.maps.event.addListenerOnce(map, 'idle', function() {
         // Load markers
         loadMarkers();
+
+        // Reload the markers every time the map moves
+        google.maps.event.addListener(map, 'dragend', function() {
+          console.log("moved the map");
+          loadMarkers();
+        });
+        // Reload markers upon zoom
+        google.maps.event.addListener(map, 'zoom_changed', function() {
+          console.log("changed zoom");
+          loadMarkers();
+        });
+
         enableMap();
       });
     }, function(error) {
@@ -119,8 +132,36 @@ angular.module('starter', ['ionic', 'ngCordova'])
   }
 
   function loadMarkers() {
-    // Get all of the markers form the Markers factory
-    Markers.getMarkers().then(function(markers) {
+    var center = map.getCenter();
+    var bounds = map.getBounds();
+    var zoom = map.getZoom();
+
+    // Convert objects returned by Google to be more readable
+    var centerNorm = {
+      lat: center.lat(),
+      lng: center.lng()
+    };
+    var boundsNorm = {
+      northeast: {
+        lat: bounds.getNorthEast().lat(),
+        lng: bounds.getNorthEast().lng()
+      },
+      southwest: {
+        lat: bounds.getSouthWest().lat(),
+        lng: bounds.getSouthWest().lng()
+      }
+    };
+
+    var boundingRadius = getBoundingRadius(centerNorm, boundsNorm);
+
+    var params = {
+      "center": centerNorm,
+      "bounds": boundsNorm,
+      "zoom": zoom,
+      "boundingRadius": boundingRadius
+    };
+
+    var markers = Markers.getMarkers(params).then(function(markers) {
       console.log("Markers: ", markers);
 
       var records = markers.data.markers;
@@ -128,19 +169,76 @@ angular.module('starter', ['ionic', 'ngCordova'])
 
       for (var i = 0; i < records.length; i++) {
         var record = records[i];
-        var markerPosition = new google.maps.LatLng(record.lat, record.lng);
 
-        // Add the marker to the map
-        var marker = new google.maps.Marker({
-          map: map,
-          animation: google.maps.Animation.DROP,
-          position: markerPosition
-        });
+        // Check if the marker has already been added
+        if (!markerExists(record.lat, record.lng)) {
+          var markerPosition = new google.maps.LatLng(record.lat, record.lng);
 
-        var infoWindowContent = "<h4>" + record.name + "</h4>";
-        addInfoWindow(marker, infoWindowContent, record);
+          // Add the marker to the map
+          var marker = new google.maps.Marker({
+            map: map,
+            animation: google.maps.Animation.DROP,
+            position: markerPosition
+          });
+
+          // Add the marker to the markerCache so we won't add it again
+          var markerData = {
+            lat: record.lat,
+            lng: record.lng,
+            marker: marker
+          };
+          markerCache.push(markerData);
+
+          var infoWindowContent = "<h4>" + record.name + "</h4>";
+          addInfoWindow(marker, infoWindowContent, record);
+        }
       }
-    });
+
+    }) 
+  }
+
+  function markerExists(lat, lng) {
+    var exists = false;
+    var cache = markerCache;
+    for (var i = 0; i < cache.length; i++) {
+      if (cache[i].lat === lat && cache[i].lng === lng) {
+        exists = true;
+      }
+    }
+    return exists;
+  }
+
+  function getBoundingRadius(center, bounds) {
+    return getDistanceBetweenPoints(center, bounds.northeast, 'miles');
+  }
+
+  function getDistanceBetweenPoints(point1, point2, units) {
+    var earthRadius = {
+      miles: 3958.8,
+      km: 6371
+    };
+
+    var radius = earthRadius[units || 'miles'];
+    var lat1 = point1.lat;
+    var lng1 = point1.lng;
+    var lat2 = point2.lat;
+    var lng2 = point2.lng;
+
+    var latDifference = toRad((lat2 - lat1));
+    var lngDifference = toRad((lng2 - lng1));
+
+    var area = Math.sin(latDifference / 2) * Math.sin(latDifference / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+    Math.sin(lngDifference / 2) * Math.sin(lngDifference / 2);
+
+    var c = 2 * Math.atan2(Math.sqrt(area), Math.sqrt(1 - area));
+    var distance = radius * c;
+
+    return distance;
+  }
+
+  function toRad(x) {
+    return x * Math.PI / 180;
   }
 
   function addInfoWindow(marker, message, record) {
@@ -206,8 +304,8 @@ angular.module('starter', ['ionic', 'ngCordova'])
 
   return {
     // Return all available markers
-    getMarkers: function() {
-      return $http.get("http://aubryandjoe.com/memory-map/markers.php").then(function(response) {
+    getMarkers: function(params) {
+      return $http.get("http://aubryandjoe.com/memory-map/markers.php", {params:params}).then(function(response) {
         markers = response;
         return markers;
       });
